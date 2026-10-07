@@ -97,7 +97,80 @@
     });
     q('.act-folder').addEventListener('click', () => post('/api/open', { pid: d.pid, with: 'folder' }).catch((e) => notice(e.message)));
     q('.act-editor').addEventListener('click', () => post('/api/open', { pid: d.pid, with: 'editor' }).catch((e) => notice(e.message)));
+    wireLogs(li, d.pid);
     return li;
+  }
+
+  // ---- Logs -----------------------------------------------------------
+  const LOG_POLL_MS = 1000;
+  const LOG_MAX_CHARS = 400000;
+
+  function wireLogs(li, pid) {
+    const pane = li.querySelector('.logpane');
+    const body = li.querySelector('.log-body');
+    const btn = li.querySelector('.act-logs');
+    const follow = li.querySelector('.log-follow input');
+    const st = { open: false, out: -1, err: -1, timer: null, chars: 0 };
+    li._logs = st;
+
+    const append = (text, cls) => {
+      if (!text) return;
+      const node = cls ? Object.assign(document.createElement('span'), { className: cls, textContent: text }) : document.createTextNode(text);
+      body.append(node);
+      st.chars += text.length;
+      while (st.chars > LOG_MAX_CHARS && body.firstChild) {
+        st.chars -= (body.firstChild.textContent || '').length;
+        body.firstChild.remove();
+      }
+    };
+
+    const poll = async () => {
+      st.timer = null;
+      if (!st.open) return;
+      try {
+        const r = await fetch(`/api/logs?pid=${pid}&out=${st.out}&err=${st.err}`, { headers: { 'X-Devport': '1' }, cache: 'no-store' });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error);
+        const first = st.out < 0;
+        st.out = data.out.next;
+        st.err = data.err.next;
+        li.querySelector('.log-file').textContent = data.file;
+        li.querySelector('.log-file').title = data.file;
+        append(data.out.text);
+        append(data.err.text, 'err');
+        if (first && !body.childNodes.length) append('No output yet.\n', 'muted');
+        if (follow.checked) body.scrollTop = body.scrollHeight;
+      } catch (e) {
+        append(`\n${e.message || 'Could not read the log.'}\n`, 'err');
+        return; // stop polling on error
+      }
+      if (st.open) st.timer = setTimeout(poll, LOG_POLL_MS);
+    };
+
+    const close = () => {
+      st.open = false;
+      clearTimeout(st.timer);
+      pane.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      btn.classList.remove('is-on');
+    };
+    st.close = close;
+
+    btn.addEventListener('click', () => {
+      if (st.open) return close();
+      st.open = true;
+      pane.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      btn.classList.add('is-on');
+      poll();
+    });
+    li.querySelector('.log-close').addEventListener('click', close);
+    body.addEventListener('scroll', () => {
+      follow.checked = body.scrollHeight - body.scrollTop - body.clientHeight < 24;
+    });
+    follow.addEventListener('change', () => {
+      if (follow.checked) body.scrollTop = body.scrollHeight;
+    });
   }
 
   function fillRow(li, d) {
@@ -138,6 +211,8 @@
 
     const noRepo = !d.repo;
     for (const b of [q('.act-folder'), q('.act-editor')]) b.disabled = noRepo;
+    const logsBtn = q('.act-logs');
+    logsBtn.hidden = !d.logs;
     li.dataset.label = `${d.repo ? d.repo.name : 'the server'} on :${d.port}`;
   }
 
@@ -145,6 +220,7 @@
     const li = rows.get(pid);
     if (!li) return;
     rows.delete(pid);
+    if (li._logs) li._logs.close();
     li.classList.add('is-leaving');
     li.addEventListener('animationend', () => li.remove(), { once: true });
     setTimeout(() => li.remove(), 600);

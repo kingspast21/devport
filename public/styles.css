@@ -169,6 +169,26 @@ code { font-family: var(--mono); font-size: 0.9em; color: var(--fg); background:
 .stats dd.stale { color: var(--work); }
 
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.btn[hidden] { display: none; }
+.btn.is-on { background: var(--surface-2); color: var(--fg); border-color: oklch(0.4 0.008 85); }
+
+/* Log viewer, opened inside a server row */
+.logpane { grid-column: 1 / -1; margin-top: -4px; animation: enter 0.35s var(--ease-out); }
+.log-bar { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.log-file { flex: 1; min-width: 0; font: 0.72rem var(--mono); color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-follow { display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--fg-2); cursor: pointer; user-select: none; }
+.log-follow input { accent-color: var(--live); margin: 0; width: 14px; height: 14px; cursor: pointer; }
+.log-bar .btn { --h: 28px; }
+.log-body {
+  margin: 0; height: 300px; overflow: auto; resize: vertical; min-height: 120px;
+  padding: 12px 14px; border-radius: 9px;
+  background: oklch(0.13 0.005 85);
+  font: 0.74rem/1.6 var(--mono); color: var(--fg-2);
+  white-space: pre-wrap; word-break: break-word;
+}
+.log-body:focus-visible { outline-offset: 0; }
+.log-body .err { color: oklch(0.8 0.12 40); }
+.log-body .muted { color: var(--fg-3); font-style: italic; }
 
 /* Empty */
 .empty { padding: 56px 28px; border-radius: var(--radius); background: var(--surface); text-align: left; }

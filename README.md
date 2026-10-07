@@ -1,6 +1,6 @@
 # devport
 
-See every dev server running on your Windows machine, which project it belongs to, and start or stop them in one click.
+See every dev server running on your Windows machine, which project it belongs to, and start, stop or tail them in one click.
 
 ![devport dashboard](docs/screenshot.png)
 
@@ -27,6 +27,21 @@ Below the running servers, **Projects** lists every repo in your projects folder
 - **Filter** the list by name or stack. Type `work` to see only work repos.
 
 Only those three script names can be run, and only for projects found in the projects folder. devport never runs arbitrary commands from the browser.
+
+## Logs
+
+Servers started from devport get a **Logs** button. It opens the server's output inside its row and keeps following it live, about once a second. Scroll up and following pauses; scroll back to the bottom (or tick **Follow**) to resume. Errors are tinted, colour codes are stripped, and the log file's path is shown so you can open it in your editor.
+
+Logs live in `%LOCALAPPDATA%\devport\logs` and are deleted after 7 days. Servers you started yourself in a terminal have no Logs button, because their output goes to that terminal, not to devport.
+
+## Tray icon
+
+While devport runs, an icon by the clock shows how many dev servers are running: a lime dot with the count, or an empty ring when nothing is. Hover it for the count and total memory.
+
+- **Left-click** opens the dashboard.
+- **Right-click** lists each running server (click one to open it), plus **Open dashboard**, **Stop all dev servers** (asks first) and **Quit devport**, which stops the dashboard but leaves your servers running.
+
+The icon closes by itself when devport stops. Windows may put new icons in the hidden-icons overflow (the `^` by the clock); drag it onto the taskbar to keep it visible. Set `DEVPORT_TRAY=0` to run without it.
 
 Everything else listening on your machine (system services, Steam, Zoom, editor extensions, AI tools) is listed under **Other listeners**, read-only. devport only stops processes running on a dev runtime (`node`, `python`, `php`, `bun`, `deno`, `ruby`). It never stops:
 
@@ -57,6 +72,7 @@ Then open http://localhost:7777.
 |---|---|---|
 | `DEVPORT_PORT` | `7777` | Port the dashboard listens on |
 | `DEVPORT_ROOT` | `~/projects` | Folder your repos live in |
+| `DEVPORT_TRAY` | `1` | Set to `0` to skip the tray icon |
 
 Repos directly inside the root are listed by folder name. Repos inside a `work` subfolder (`~/projects/work/<repo>`) get a **work** tag, which helps keep client or employer projects apart. A server whose path is outside the root is still detected, from the folder that holds its `node_modules`, and is tagged **outside projects**.
 

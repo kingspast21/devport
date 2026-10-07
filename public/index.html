@@ -18,6 +18,8 @@
     <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.2"/></symbol>
     <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></symbol>
     <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.5v9l7.5-4.5z"/></symbol>
+    <symbol id="i-logs" viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></symbol>
     <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/></symbol>
   </svg>
 
@@ -94,9 +96,18 @@
       </dl>
       <div class="actions">
         <a class="btn btn-ghost act-open" target="_blank" rel="noopener"><svg class="ico"><use href="#i-open"/></svg><span>Open</span></a>
+        <button class="btn btn-ghost act-logs" type="button" aria-expanded="false"><svg class="ico"><use href="#i-logs"/></svg><span>Logs</span></button>
         <button class="btn btn-ghost act-folder" type="button" title="Open folder in Explorer"><svg class="ico"><use href="#i-folder"/></svg><span class="sr-only">Open folder</span></button>
         <button class="btn btn-ghost act-editor" type="button" title="Open in VS Code"><svg class="ico"><use href="#i-code"/></svg><span class="sr-only">Open in VS Code</span></button>
         <button class="btn btn-danger act-kill" type="button"><svg class="ico"><use href="#i-stop"/></svg><span>Stop</span></button>
+      </div>
+      <div class="logpane" hidden>
+        <div class="log-bar">
+          <span class="log-file"></span>
+          <label class="log-follow"><input type="checkbox" checked> Follow</label>
+          <button class="btn btn-ghost log-close" type="button" title="Close logs"><svg class="ico"><use href="#i-close"/></svg><span class="sr-only">Close logs</span></button>
+        </div>
+        <pre class="log-body" tabindex="0" aria-label="Server output"></pre>
       </div>
     </li>
   </template>

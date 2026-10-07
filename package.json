@@ -1,0 +1,17 @@
+{
+  "name": "devport",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local dashboard for the dev servers running on your Windows machine.",
+  "keywords": ["dev-server", "ports", "dashboard", "windows", "localhost", "vite", "devtools"],
+  "repository": { "type": "git", "url": "https://github.com/kingspast21/devport.git" },
+  "os": ["win32"],
+  "main": "server.js",
+  "bin": { "devport": "server.js" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/classify.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}

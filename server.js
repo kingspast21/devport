@@ -8,7 +8,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
-const { scan, killTree, stopWorker } = require('./lib/scan');
+const { scan, killTree, parentMap, stopWorker } = require('./lib/scan');
+const { listProjects } = require('./lib/projects');
+const { Launches } = require('./lib/launch');
 
 const PORT = Number(process.env.DEVPORT_PORT || 7777);
 const HOST = '127.0.0.1';
@@ -56,9 +58,39 @@ function sameOrigin(req) {
   return req.headers['x-devport'] === '1';
 }
 
+const launches = new Launches();
+const pathKey = (p) => path.resolve(p).toLowerCase();
+
+// Scan + launch attribution + project list, in one consistent snapshot.
+async function fullScan() {
+  const r = await scan(OPTS);
+  if (launches.roots.size && r.dev.some((d) => !d.repo)) {
+    const parents = await parentMap().catch(() => new Map());
+    launches.attribute(r.dev, parents);
+  }
+  const running = new Map();
+  for (const d of r.dev) {
+    if (!d.repo) continue;
+    const k = pathKey(d.repo.path);
+    if (!running.has(k)) running.set(k, []);
+    running.get(k).push({ pid: d.pid, port: d.port });
+  }
+  launches.update(new Set(running.keys()));
+  const projects = listProjects(PROJECTS_ROOT, { exclude: [__dirname] }).map((p) => {
+    const l = launches.get(p.path);
+    return {
+      ...p,
+      running: running.get(pathKey(p.path)) || [],
+      lastScript: launches.lastScript.get(pathKey(p.path)) || null,
+      launch: l ? { state: l.state, script: l.script, since: l.since, reason: l.reason, log: l.log, logFile: l.out } : null,
+    };
+  });
+  return { ...r, projects };
+}
+
 // Re-scan right before acting, so a PID recycled since the page loaded can't be hit.
 async function findDev(pid) {
-  const { dev } = await scan(OPTS);
+  const { dev } = await fullScan();
   return dev.find((d) => d.pid === pid);
 }
 
@@ -72,7 +104,7 @@ const CODE_CMD = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsof
 
 async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/scan') {
-    return send(res, 200, { ...(await scan(OPTS)), projectsRoot: PROJECTS_ROOT });
+    return send(res, 200, { ...(await fullScan()), projectsRoot: PROJECTS_ROOT });
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
   if (!sameOrigin(req)) return send(res, 403, { error: 'Cross-origin request refused' });
@@ -88,12 +120,46 @@ async function api(req, res, url) {
   }
 
   if (url.pathname === '/api/kill-all') {
-    const { dev } = await scan(OPTS);
+    const { dev } = await fullScan();
     const killed = [];
     for (const d of dev) {
       await killTree(d.pid).then(() => killed.push(d.pid), () => {});
     }
     return send(res, 200, { ok: true, killed });
+  }
+
+  if (url.pathname === '/api/start') {
+    // Only a project from a fresh listing, and only one of its allowlisted scripts.
+    const { projects, dev, other } = await fullScan();
+    const project = projects.find((p) => p.id === body.id);
+    if (!project) return send(res, 404, { error: 'Project not found. Refresh and try again.' });
+    const script = project.scripts.find((s) => s.name === body.script) || project.scripts[0];
+    if (!project.installed) {
+      return send(res, 409, { error: `${project.name} has no node_modules. Run ${project.pm} install in it first.` });
+    }
+    if (project.running.length) {
+      return send(res, 409, { error: `${project.name} is already running on :${project.running[0].port}.` });
+    }
+    if (project.launch && project.launch.state === 'starting') {
+      return send(res, 409, { error: `${project.name} is already starting.` });
+    }
+    const port = script.port;
+    if (port && dev.concat(other).some((d) => d.ports.includes(port))) {
+      return send(res, 409, { error: `Port ${port} is already taken, and ${project.name}'s ${script.name} script needs it.` });
+    }
+    try {
+      await launches.start(project, script.name);
+    } catch (e) {
+      return send(res, 500, { error: `Couldn't start ${project.name}: ${e.message}` });
+    }
+    return send(res, 200, { ok: true });
+  }
+
+  if (url.pathname === '/api/dismiss') {
+    const { projects } = await fullScan();
+    const project = projects.find((p) => p.id === body.id);
+    if (project) launches.dismiss(project.path);
+    return send(res, 200, { ok: true });
   }
 
   if (url.pathname === '/api/open') {

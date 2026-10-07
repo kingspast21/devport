@@ -10,7 +10,7 @@
   "bin": { "devport": "server.js" },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/classify.test.js"
+    "test": "node --test"
   },
   "engines": { "node": ">=20" },
   "license": "MIT"

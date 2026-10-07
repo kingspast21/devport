@@ -1,6 +1,6 @@
 # devport
 
-See every dev server running on your Windows machine, which project it belongs to, and stop it in one click.
+See every dev server running on your Windows machine, which project it belongs to, and start or stop them in one click.
 
 ![devport dashboard](docs/screenshot.png)
 
@@ -14,6 +14,19 @@ You start `npm run dev` in one terminal, a Python server in another, forget abou
 - **Uptime and memory.** Servers running longer than 8 hours are highlighted.
 - **Binding.** `localhost`, `IPv6 only` (`::1`, where `127.0.0.1` won't connect) or `LAN visible` (reachable from other devices on your network).
 - **Actions.** Open in the browser, open the folder in Explorer, open it in VS Code, **Stop**, and **Stop all**. Stopping takes a second click to confirm and ends the whole process tree.
+
+## Starting projects
+
+Below the running servers, **Projects** lists every repo in your projects folder that has a `dev`, `start` or `serve` script in its `package.json`. Click **Start** and devport runs that script in a hidden window. The row shows **Starting** until the server begins listening, then **Running on :port**, and the server appears in the list above.
+
+- **Pick the script.** If a project has more than one of `dev`, `start` and `serve`, choose which to run. A `--port` in the script is shown next to it, and devport refuses to start when that port is already taken.
+- **Uses your package manager.** pnpm, yarn or bun when their lockfile is present, npm otherwise.
+- **No `node_modules`?** The row says to install first instead of starting something that will fail.
+- **When it fails,** the row turns red with the last lines of output and the path to the full log (`%LOCALAPPDATA%\devport\logs`). The same happens if nothing is listening after 2 minutes.
+- **Servers with no path in their command** (`node server.js`) are still matched to their project, because devport remembers which processes it started.
+- **Filter** the list by name or stack. Type `work` to see only work repos.
+
+Only those three script names can be run, and only for projects found in the projects folder. devport never runs arbitrary commands from the browser.
 
 Everything else listening on your machine (system services, Steam, Zoom, editor extensions, AI tools) is listed under **Other listeners**, read-only. devport only stops processes running on a dev runtime (`node`, `python`, `php`, `bun`, `deno`, `ruby`). It never stops:
 
@@ -53,6 +66,7 @@ Repos directly inside the root are listed by folder name. Repos inside a `work` 
 2. A long-lived PowerShell worker asks CIM (`Win32_Process`) for each process's command line, start time and memory. Reusing one worker keeps a scan to about half a second after the first one.
 3. `lib/classify.js` sorts each process into dev server, tooling, app or system, and works out the repo and stack. It is pure and covered by tests: `npm test`.
 4. Before stopping or opening anything, the server scans again and only acts on a PID that is still a dev server, so a recycled PID can't be hit by mistake.
+5. **Start** runs `<pm> run <script>` through PowerShell's `Start-Process -WindowStyle Hidden`, with output redirected to a log file. The launch's process ID is remembered so any server it spawns is matched to the project.
 
 ## Security
 
@@ -67,7 +81,9 @@ There is no auth beyond that. Don't expose it on a network.
 ## Limits
 
 - **Windows only** for now. macOS and Linux would need `lsof`/`ss` and `ps` in `lib/scan.js`. PRs welcome.
-- **Repos are found from the command line.** A server started with no path in its arguments (for example `python -m http.server` run from inside the repo) shows as **Unknown repo**, because Windows doesn't expose another process's working directory without native code.
+- **Repos are found from the command line.** A server started outside devport with no path in its arguments (for example `python -m http.server` run from inside the repo) shows as **Unknown repo**, because Windows doesn't expose another process's working directory without native code.
+- **Projects means Node projects.** Folders without a `package.json` (static sites, Laravel, Django) aren't listed under Projects yet, though their servers are still detected when running.
+- **Launch tracking lives in memory.** Restarting devport forgets which servers it started, so a pathless `node server.js` it launched earlier shows as **Unknown repo** after a restart.
 - **Open in VS Code** expects the default user install of VS Code.
 
 ## License

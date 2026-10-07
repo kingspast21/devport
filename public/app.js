@@ -184,6 +184,188 @@
     document.title = n ? `(${n}) devport` : 'devport';
   }
 
+  // ---- Projects -------------------------------------------------------
+  const proj = {
+    section: $('projects'), list: $('projList'), count: $('projCount'), filter: $('projFilter'),
+    empty: $('projEmpty'), tpl: $('projTpl'), rows: new Map(), data: [],
+  };
+  proj.filter.value = localStorage.getItem('devport.filter') || '';
+  proj.filter.addEventListener('input', () => {
+    localStorage.setItem('devport.filter', proj.filter.value);
+    renderProjects(proj.data);
+  });
+
+  function svgIcon(id) {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('class', 'ico');
+    s.setAttribute('aria-hidden', 'true');
+    const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    u.setAttribute('href', `#${id}`);
+    s.append(u);
+    return s;
+  }
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function scriptLabel(p, s) {
+    return `${p.pm} run ${s.name}`;
+  }
+
+  function buildProject(p) {
+    const li = proj.tpl.content.firstElementChild.cloneNode(true);
+    li.dataset.id = p.id;
+    li.querySelector('.pn').textContent = p.name;
+    const tag = li.querySelector('.tag');
+    if (p.group === 'work') {
+      tag.textContent = 'work';
+      tag.classList.add('work');
+    }
+    const box = li.querySelector('.proj-script');
+    if (p.scripts.length > 1) {
+      const sel = el('select', 'script-select');
+      sel.setAttribute('aria-label', `Script for ${p.name}`);
+      for (const s of p.scripts) {
+        const o = el('option', null, scriptLabel(p, s));
+        o.value = s.name;
+        sel.append(o);
+      }
+      box.append(sel);
+    } else {
+      box.append(el('span', 'script-one', scriptLabel(p, p.scripts[0])));
+    }
+    box.append(el('span', 'script-port'));
+    const sel = box.querySelector('select');
+    if (sel) sel.addEventListener('change', () => updatePortHint(li, p));
+    li.querySelector('.act-dismiss').addEventListener('click', () =>
+      post('/api/dismiss', { id: p.id }).then(() => schedule(0), (e) => notice(e.message)),
+    );
+    return li;
+  }
+
+  function selectedScript(li, p) {
+    const sel = li.querySelector('select');
+    return p.scripts.find((s) => s.name === (sel ? sel.value : p.scripts[0].name)) || p.scripts[0];
+  }
+
+  function updatePortHint(li, p) {
+    const s = selectedScript(li, p);
+    li.querySelector('.script-port').textContent = s.port ? `:${s.port}` : '';
+  }
+
+  async function startProject(li, p, btn) {
+    btn.classList.add('is-busy');
+    btn.querySelector('span').textContent = 'Starting…';
+    try {
+      await post('/api/start', { id: p.id, script: selectedScript(li, p).name });
+      schedule(300);
+    } catch (e) {
+      notice(e.message);
+      btn.classList.remove('is-busy');
+      btn.querySelector('span').textContent = 'Start';
+    }
+  }
+
+  function stateOf(p) {
+    if (p.running.length) return 'running';
+    if (p.launch) return p.launch.state; // starting | failed
+    if (!p.installed) return 'uninstalled';
+    return 'idle';
+  }
+
+  function fillProject(li, p) {
+    li.querySelector('.proj-stack').textContent = p.stack;
+    updatePortHint(li, p);
+    const state = stateOf(p);
+    const sig = `${state}|${p.running.map((r) => r.port).join(',')}|${p.launch ? p.launch.since : ''}`;
+    li.dataset.state = state;
+    const box = li.querySelector('.proj-state');
+    if (state === 'starting') {
+      // Live elapsed counter, no rebuild.
+      const t = box.querySelector('.elapsed');
+      if (t) t.textContent = `${Math.max(0, Math.round((Date.now() - p.launch.since) / 1000))}s`;
+    }
+    if (li.dataset.sig === sig) return;
+    li.dataset.sig = sig;
+    box.replaceChildren();
+    const fail = li.querySelector('.proj-fail');
+    fail.hidden = state !== 'failed';
+    const sel = li.querySelector('select');
+    if (sel) {
+      sel.disabled = state === 'running' || state === 'starting';
+      if (p.lastScript && p.scripts.some((s) => s.name === p.lastScript)) sel.value = p.lastScript;
+      updatePortHint(li, p);
+    }
+
+    if (state === 'running') {
+      const r = p.running[0];
+      const a = el('a', 'run-link');
+      a.href = `http://localhost:${r.port}/`;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.append(el('span', 'dot'), el('span', null, `Running on :${r.port}`));
+      box.append(a);
+    } else if (state === 'starting') {
+      const s = el('span', 'starting');
+      s.append(el('span', 'dot pulse-dot'), el('span', null, 'Starting '), el('span', 'elapsed', `${Math.max(0, Math.round((Date.now() - p.launch.since) / 1000))}s`));
+      box.append(s);
+    } else if (state === 'uninstalled') {
+      box.append(el('span', 'muted-note', `Run ${p.pm} install first`));
+    } else {
+      const btn = el('button', 'btn btn-go');
+      btn.type = 'button';
+      btn.append(svgIcon('i-play'), el('span', null, state === 'failed' ? 'Retry' : 'Start'));
+      btn.addEventListener('click', () => startProject(li, p, btn));
+      box.append(btn);
+      if (state === 'failed') {
+        const l = p.launch;
+        li.querySelector('.fail-msg').textContent =
+          l.reason === 'timeout'
+            ? `${scriptLabel(p, { name: l.script })} is still running but nothing has started listening after 2 minutes. If it isn't a server, stop it from Task Manager.`
+            : `${scriptLabel(p, { name: l.script })} exited before it started listening.`;
+        const log = li.querySelector('.fail-log');
+        log.textContent = (l.log && l.log.length ? l.log.join('\n') : 'No output.') + (l.logFile ? `\n\nFull log: ${l.logFile}` : '');
+      }
+    }
+  }
+
+  function renderProjects(projects) {
+    proj.data = projects;
+    proj.section.hidden = projects.length === 0;
+    const q = proj.filter.value.trim().toLowerCase();
+    const seen = new Set();
+    let prev = null;
+    let shown = 0;
+    for (const p of projects) {
+      seen.add(p.id);
+      let li = proj.rows.get(p.id);
+      if (!li) {
+        li = buildProject(p);
+        proj.rows.set(p.id, li);
+      }
+      fillProject(li, p);
+      const match = !q || p.name.toLowerCase().includes(q) || p.stack.toLowerCase().includes(q) || (q === 'work' && p.group === 'work');
+      li.hidden = !match;
+      if (match) shown++;
+      const want = prev ? prev.nextSibling : proj.list.firstChild;
+      if (li !== want) proj.list.insertBefore(li, want);
+      prev = li;
+    }
+    for (const [id, li] of proj.rows) {
+      if (!seen.has(id)) {
+        li.remove();
+        proj.rows.delete(id);
+      }
+    }
+    proj.count.textContent = q ? `${shown} of ${projects.length}` : projects.length;
+    proj.empty.hidden = shown > 0 || !projects.length;
+    proj.empty.textContent = `No projects match “${proj.filter.value.trim()}”.`;
+  }
+
   function renderOther(other) {
     els.otherCount.textContent = other.length;
     const frag = document.createDocumentFragment();
@@ -224,6 +406,7 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Scan failed');
       renderDev(data.dev);
+      renderProjects(data.projects || []);
       renderOther(data.other);
       els.meta.textContent = `scan ${data.tookMs} ms`;
       firstRender = false;

@@ -11,7 +11,7 @@ You start `npm run dev` in one terminal, a Python server in another, forget abou
 - **Every listening dev server.** It scans all ports, not a fixed list, and refreshes every 3 seconds. It pauses while the tab is hidden.
 - **The project it came from.** The repo folder is read from the process command line, so `...\projects\acme-storefront\node_modules\vite\bin\vite.js` shows as **acme-storefront**.
 - **The stack.** Vite, Astro, Next.js, Nuxt, Remix, Angular, Webpack, Wrangler, Netlify Dev, `serve`, `http-server`, nodemon, tsx, Python `http.server`, Uvicorn, Flask, Django, Laravel, PHP's built-in server and Rails.
-- **Uptime and memory.** Servers running longer than 8 hours are highlighted.
+- **Uptime and memory.** Servers running for hours or using a lot of memory are highlighted (see [Zombie alerts](#zombie-alerts)).
 - **Binding.** `localhost`, `IPv6 only` (`::1`, where `127.0.0.1` won't connect) or `LAN visible` (reachable from other devices on your network).
 - **Actions.** Open in the browser, open the folder in Explorer, open it in VS Code, **Stop**, and **Stop all**. Stopping takes a second click to confirm and ends the whole process tree.
 
@@ -43,6 +43,19 @@ While devport runs, an icon by the clock shows how many dev servers are running:
 
 The icon closes by itself when devport stops. Windows may put new icons in the hidden-icons overflow (the `^` by the clock); drag it onto the taskbar to keep it visible. Set `DEVPORT_TRAY=0` to run without it.
 
+## Zombie alerts
+
+devport flags dev servers that look forgotten or heavy:
+
+- **Forgotten:** running for more than 8 hours.
+- **Heavy:** using more than 1 GB of memory.
+
+Flagged servers get an amber dot and an amber uptime or memory figure in the dashboard, and a note in the tray menu. The tray also raises a Windows notification, once per server per reason, so a server that stays heavy doesn't nag you. Several at once are batched into one notification. Click it to open the dashboard.
+
+Windows' Do Not Disturb hides the pop-up but still keeps the notification in the notification centre (Win+N).
+
+Change the limits with `DEVPORT_STALE_HOURS` and `DEVPORT_MEM_MB`. Set either to `0` to turn that check off, or `DEVPORT_ALERTS=0` to keep the highlights but skip notifications.
+
 Everything else listening on your machine (system services, Steam, Zoom, editor extensions, AI tools) is listed under **Other listeners**, read-only. devport only stops processes running on a dev runtime (`node`, `python`, `php`, `bun`, `deno`, `ruby`). It never stops:
 
 - Windows services or desktop apps
@@ -73,6 +86,9 @@ Then open http://localhost:7777.
 | `DEVPORT_PORT` | `7777` | Port the dashboard listens on |
 | `DEVPORT_ROOT` | `~/projects` | Folder your repos live in |
 | `DEVPORT_TRAY` | `1` | Set to `0` to skip the tray icon |
+| `DEVPORT_STALE_HOURS` | `8` | Hours before a server counts as forgotten (`0` = off) |
+| `DEVPORT_MEM_MB` | `1024` | Memory in MB before a server counts as heavy (`0` = off) |
+| `DEVPORT_ALERTS` | `1` | Set to `0` to skip Windows notifications |
 
 Repos directly inside the root are listed by folder name. Repos inside a `work` subfolder (`~/projects/work/<repo>`) get a **work** tag, which helps keep client or employer projects apart. A server whose path is outside the root is still detected, from the folder that holds its `node_modules`, and is tagged **outside projects**.
 

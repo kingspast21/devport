@@ -167,6 +167,7 @@ code { font-family: var(--mono); font-size: 0.9em; color: var(--fg); background:
 .stats dt { font-size: 0.72rem; color: var(--fg-3); }
 .stats dd { margin: 0; font: 500 0.92rem/1.2 var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); }
 .stats dd.stale { color: var(--work); }
+.server.is-zombie .port::before { background: var(--work); box-shadow: 0 0 0 3px oklch(0.82 0.11 75 / 0.16); }
 
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
 .btn[hidden] { display: none; }

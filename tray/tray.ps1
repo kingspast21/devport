@@ -74,6 +74,8 @@ function Format-Mem([double]$Bytes) {
 $script:state = $null
 $script:shownCount = -1
 $script:failures = 0
+# Alert keys ("pid:reason") already announced, so each fires once.
+$script:announced = New-Object 'System.Collections.Generic.HashSet[string]'
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Icon = New-CountIcon 0
@@ -91,12 +93,54 @@ function Exit-Tray {
     [System.Windows.Forms.Application]::Exit()
 }
 
+function Show-Alerts($Alerts) {
+    if ($env:DEVPORT_TRAY_DEBUG) { Write-TrayLog ("alerts in: {0} [{1}]" -f @($Alerts).Count, (@($Alerts | ForEach-Object { $_.key }) -join ',')) }
+    $live = @{}
+    foreach ($srv in $script:state.servers) { $live[[string]$srv.pid] = $true }
+    # Forget alerts for servers that are gone, so a recycled PID can alert again.
+    foreach ($k in @($script:announced)) { if (-not $live[$k.Split(':')[0]]) { [void]$script:announced.Remove($k) } }
+    $new = @($Alerts | Where-Object { $_ -and -not $script:announced.Contains($_.key) })
+    if (-not $new.Count) { return }
+    foreach ($a in $new) { [void]$script:announced.Add($a.key) }
+    if ($new.Count -eq 1) {
+        $title = if ($new[0].reason -eq 'heavy') { 'A dev server is using a lot of memory' } else { 'A dev server looks forgotten' }
+        $text = $new[0].text
+    } else {
+        $title = "$($new.Count) dev servers need a look"
+        $text = ($new | Select-Object -First 4 | ForEach-Object { $_.text }) -join "`n"
+        if ($new.Count -gt 4) { $text += "`n+$($new.Count - 4) more" }
+    }
+    $text += "`nClick to open devport."
+    $notify.BalloonTipTitle = $title
+    $notify.BalloonTipText = $text.Substring(0, [Math]::Min(250, $text.Length))
+    $notify.BalloonTipIcon = 'Warning'
+    $notify.ShowBalloonTip(15000)
+    if ($env:DEVPORT_TRAY_DEBUG) { Write-TrayLog "balloon: $title" }
+}
+
+function Write-TrayLog([string]$Message) {
+    try {
+        $dir = Join-Path $env:LOCALAPPDATA 'devport'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Add-Content -Path (Join-Path $dir 'tray.log') -Value ("{0:s}  {1}" -f (Get-Date), $Message)
+    } catch {}
+}
+
 function Update-State {
+    # Only an unreachable server counts toward exiting; anything else is a bug
+    # in this script, so log it instead of quietly shutting the tray down.
     try {
         $s = Invoke-Devport 'GET' '/api/summary'
         $script:failures = 0
+    } catch {
+        $script:failures++
+        if ($script:failures -ge 3) { Exit-Tray }
+        return
+    }
+    try {
         if (-not $s.ready) { return }
         $script:state = $s
+        if ($s.alerts) { Show-Alerts $s.alerts }
         if ($s.count -ne $script:shownCount) {
             $old = $notify.Icon
             $notify.Icon = New-CountIcon $s.count
@@ -108,8 +152,7 @@ function Update-State {
         if ($s.count -gt 0) { $tip += " ($(Format-Mem $s.mem))" }
         $notify.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
     } catch {
-        $script:failures++
-        if ($script:failures -ge 3) { Exit-Tray }
+        Write-TrayLog ("{0} (line {1})" -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber)
     }
 }
 
@@ -123,7 +166,11 @@ $menu.Add_Opening({
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         foreach ($srv in $s.servers) {
             $name = if ($srv.name) { $srv.name } else { 'Unknown repo' }
-            $item = $menu.Items.Add(":$($srv.port)    $name  ($($srv.stack))")
+            $why = @()
+            if ($srv.flags.stale) { $why += 'running long' }
+            if ($srv.flags.heavy) { $why += 'heavy' }
+            $suffix = if ($why.Count) { "  - $($why -join ', ')" } else { '' }
+            $item = $menu.Items.Add(":$($srv.port)    $name  ($($srv.stack))$suffix")
             $item.Tag = $srv.port
             $item.ToolTipText = "Open http://localhost:$($srv.port)/"
             $item.Add_Click({ Start-Process ("http://localhost:{0}/" -f $this.Tag) })
@@ -154,6 +201,7 @@ $menu.Add_Opening({
 })
 
 $notify.Add_MouseClick({ if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Open-Dashboard } })
+$notify.Add_BalloonTipClicked({ Open-Dashboard })
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 3000

@@ -26,7 +26,8 @@
   };
   const fmtMem = (b) => (!b ? '?' : b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : `${Math.round(b / 1024 ** 2)} MB`);
   const BIND = { local: 'localhost', 'ipv6-only': 'IPv6 only', all: 'LAN visible' };
-  const STALE_MS = 8 * 3600 * 1000;
+  // Zombie thresholds come from the server (DEVPORT_STALE_HOURS / DEVPORT_MEM_MB).
+  let limits = { staleHours: 8, memMb: 1024 };
 
   function notice(msg, ok = false) {
     clearTimeout(noticeTimer);
@@ -204,10 +205,14 @@
 
     const up = q('.uptime');
     up.textContent = fmtUptime(d.start);
-    const stale = d.start && Date.now() - d.start > STALE_MS;
-    up.classList.toggle('stale', !!stale);
-    up.title = stale ? 'Running for over 8 hours. Forgotten?' : '';
-    q('.mem').textContent = fmtMem(d.mem);
+    const flags = d.flags || {};
+    up.classList.toggle('stale', !!flags.stale);
+    up.title = flags.stale ? `Running for over ${limits.staleHours} hours. Forgotten?` : '';
+    const mem = q('.mem');
+    mem.textContent = fmtMem(d.mem);
+    mem.classList.toggle('stale', !!flags.heavy);
+    mem.title = flags.heavy ? `Using over ${fmtMem(limits.memMb * 1024 * 1024)}` : '';
+    li.classList.toggle('is-zombie', !!(flags.stale || flags.heavy));
 
     const noRepo = !d.repo;
     for (const b of [q('.act-folder'), q('.act-editor')]) b.disabled = noRepo;
@@ -481,6 +486,7 @@
       const r = await fetch('/api/scan', { cache: 'no-store' });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Scan failed');
+      if (data.limits) limits = data.limits;
       renderDev(data.dev);
       renderProjects(data.projects || []);
       renderOther(data.other);

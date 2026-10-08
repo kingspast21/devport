@@ -11,6 +11,9 @@ const { spawn } = require('node:child_process');
 const { scan, killTree, parentMap, stopWorker } = require('./lib/scan');
 const { listProjects } = require('./lib/projects');
 const { Launches, readFrom, pruneLogs } = require('./lib/launch');
+const { limitsFrom, flag, alertsFor } = require('./lib/zombies');
+
+const LIMITS = limitsFrom();
 
 const PORT = Number(process.env.DEVPORT_PORT || 7777);
 const HOST = '127.0.0.1';
@@ -87,7 +90,8 @@ async function fullScan() {
       launch: l ? { state: l.state, script: l.script, since: l.since, reason: l.reason, log: l.log, logFile: l.out } : null,
     };
   });
-  return { ...r, projects };
+  flag(r.dev, LIMITS);
+  return { ...r, projects, limits: { staleHours: LIMITS.staleHours, memMb: LIMITS.memMb } };
 }
 
 // Last full scan, for the tray: served instantly, refreshed in the background
@@ -109,7 +113,8 @@ function summary() {
     ready: true,
     count: snapshot.dev.length,
     mem: snapshot.dev.reduce((a, d) => a + (d.mem || 0), 0),
-    servers: snapshot.dev.map((d) => ({ pid: d.pid, port: d.port, name: d.repo ? d.repo.name : null, stack: d.stack })),
+    servers: snapshot.dev.map((d) => ({ pid: d.pid, port: d.port, name: d.repo ? d.repo.name : null, stack: d.stack, flags: d.flags })),
+    alerts: LIMITS.notify ? alertsFor(snapshot.dev) : [],
   };
 }
 
